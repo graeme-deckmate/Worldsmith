@@ -22,6 +22,9 @@ export function Sidebar({
       <button className={itemClass('overview')} onClick={() => onSelect('overview')}>
         Overview
       </button>
+      <button className={itemClass('problems')} onClick={() => onSelect('problems')}>
+        Problems
+      </button>
       {GROUPS.map((group) => (
         <div key={group} className="mt-3">
           <div className="px-3 text-[10px] uppercase tracking-wider text-zinc-600 mb-1">{group}</div>

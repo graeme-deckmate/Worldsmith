@@ -8,6 +8,9 @@ import { CollectionPanel } from './panels/CollectionPanel.tsx';
 import { SpritesPanel } from './panels/SpritesPanel.tsx';
 import { PalettesPanel } from './panels/PalettesPanel.tsx';
 import { MapsPanel } from './map/MapsPanel.tsx';
+import { DialoguePanel } from './rules/DialoguePanel.tsx';
+import { UnlocksPanel } from './rules/UnlocksPanel.tsx';
+import { ProblemsPanel } from './rules/ProblemsPanel.tsx';
 import { EntityListPanel } from './form/EntityListPanel.tsx';
 import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
@@ -17,6 +20,8 @@ const PANELS: Record<string, FC> = {
   sprites: SpritesPanel,
   palettes: PalettesPanel,
   maps: MapsPanel,
+  dialogue: DialoguePanel,
+  unlocks: UnlocksPanel,
 };
 
 export function App() {
@@ -40,14 +45,18 @@ export function App() {
       <div className="flex-1 flex min-h-0">
         <Sidebar active={active} onSelect={setActive} />
         <main className="flex-1 overflow-auto p-6 min-w-0">
-          {active === 'overview' || !section ? (
+          {active === 'overview' ? (
             <OverviewPanel />
+          ) : active === 'problems' ? (
+            <ProblemsPanel onNavigate={setActive} />
           ) : Dedicated ? (
             <Dedicated />
           ) : reg ? (
             <EntityListPanel reg={reg} />
-          ) : (
+          ) : section ? (
             <CollectionPanel section={section} />
+          ) : (
+            <OverviewPanel />
           )}
         </main>
       </div>
