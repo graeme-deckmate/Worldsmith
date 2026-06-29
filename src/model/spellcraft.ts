@@ -88,6 +88,24 @@ export const zPlayerStatus = z
   .strict();
 export type PlayerStatus = z.infer<typeof zPlayerStatus>;
 
+/**
+ * Author-defined effect a reaction applies when it fires. All optional: hitBonus
+ * amplifies the triggering hit (×(1+x)); instantDot deals damage scaled off a
+ * status's DoT tick (×mult, optionally × remaining turns); applyStatus inflicts a
+ * status. Covers scald/shatter/snare/blight/kindle.
+ */
+export const zReactionEffect = z
+  .object({
+    hitBonus: z.number().optional(),
+    instantDot: z
+      .object({ status: zId, mult: z.number(), perRemainingTurn: z.boolean().optional() })
+      .strict()
+      .optional(),
+    applyStatus: z.object({ status: zId, turns: z.number().int() }).strict().optional(),
+  })
+  .strict();
+export type ReactionEffect = z.infer<typeof zReactionEffect>;
+
 /** A reaction: a trigger element consumes a setup status for an effect. */
 export const zReaction = z
   .object({
@@ -95,9 +113,26 @@ export const zReaction = z
     setup: zId, // enemy status consumed
     trigger: zId, // element that fires it
     line: z.string().max(120).default(''),
+    effect: zReactionEffect.optional(),
   })
   .strict();
 export type Reaction = z.infer<typeof zReaction>;
+
+/** Author-defined surge effect (the d10 wyrd table). All fields optional. */
+export const zSurgeEffect = z
+  .object({
+    damage: z.number().optional(),
+    healHp: z.number().optional(),
+    restoreMp: z.number().optional(),
+    forceElementStatus: z.boolean().optional(),
+    recastFrac: z.number().optional(),
+    selfElementStatus: z.boolean().optional(),
+    selfHpFracFee: z.number().optional(),
+    mpDrain: z.number().optional(),
+    randomEnemyStatus: z.object({ status: zId, turns: z.number().int() }).strict().optional(),
+  })
+  .strict();
+export type SurgeEffect = z.infer<typeof zSurgeEffect>;
 
 export const zSurge = z
   .object({
@@ -105,9 +140,28 @@ export const zSurge = z
     severity: z.enum(['mild', 'moderate', 'severe']),
     id: zId,
     line: z.string().max(120).default(''),
+    effect: zSurgeEffect.optional(),
   })
   .strict();
 export type Surge = z.infer<typeof zSurge>;
+
+/** Author-defined twin-rider effect. All fields optional. */
+export const zTwinRiderEffect = z
+  .object({
+    matchupCap: z.number().optional(),
+    arcFrac: z.number().optional(),
+    mpOnHit: z.number().optional(),
+    ignoreShield: z.boolean().optional(),
+    enemyNextMoveMult: z.number().optional(),
+    spreadStatusOnKill: zId.optional(),
+    extraDotTick: z.boolean().optional(),
+    witherTakenMult: z.number().optional(),
+    enemyActsLast: z.boolean().optional(),
+    blockEnemyShieldTurns: z.number().int().optional(),
+    reactionHitBonus: z.number().optional(),
+  })
+  .strict();
+export type TwinRiderEffect = z.infer<typeof zTwinRiderEffect>;
 
 export const zTwinPair = z
   .object({
@@ -115,6 +169,7 @@ export const zTwinPair = z
     b: zId,
     prefix: z.string().max(24),
     rider: zId,
+    effect: zTwinRiderEffect.optional(),
   })
   .strict();
 export type TwinPair = z.infer<typeof zTwinPair>;

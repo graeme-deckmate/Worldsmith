@@ -89,5 +89,27 @@ export function validateWorld(w: World): Issue[] {
   if (w.maps.length > 0) {
     ref(maps.has(w.start.map), 'error', 'start', `start map "${w.start.map}" not found`);
   }
+
+  // wheel cross-references
+  for (const el of w.wheel.order)
+    ref(elements.has(el), 'warn', 'wheel.order', `element "${el}" not found`);
+  for (const r of w.wheel.reactions) {
+    ref(enemyStatuses.has(r.setup), 'error', `wheel.reaction.${r.id}`, `setup status "${r.setup}" not found`);
+    ref(elements.has(r.trigger), 'error', `wheel.reaction.${r.id}`, `trigger element "${r.trigger}" not found`);
+    if (r.effect?.instantDot)
+      ref(enemyStatuses.has(r.effect.instantDot.status), 'error', `wheel.reaction.${r.id}`, `effect status "${r.effect.instantDot.status}" not found`);
+    if (r.effect?.applyStatus)
+      ref(enemyStatuses.has(r.effect.applyStatus.status), 'error', `wheel.reaction.${r.id}`, `effect status "${r.effect.applyStatus.status}" not found`);
+  }
+  for (const su of w.wheel.surges) {
+    if (su.effect?.randomEnemyStatus)
+      ref(enemyStatuses.has(su.effect.randomEnemyStatus.status), 'error', `wheel.surge.${su.id}`, `effect status "${su.effect.randomEnemyStatus.status}" not found`);
+  }
+  for (const tp of w.wheel.twinPairs) {
+    ref(elements.has(tp.a), 'error', `wheel.twin.${tp.a}_${tp.b}`, `element "${tp.a}" not found`);
+    ref(elements.has(tp.b), 'error', `wheel.twin.${tp.a}_${tp.b}`, `element "${tp.b}" not found`);
+    if (tp.effect?.spreadStatusOnKill)
+      ref(enemyStatuses.has(tp.effect.spreadStatusOnKill), 'error', `wheel.twin.${tp.a}_${tp.b}`, `spread status "${tp.effect.spreadStatusOnKill}" not found`);
+  }
   return issues;
 }
