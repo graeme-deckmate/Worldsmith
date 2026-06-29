@@ -3,10 +3,11 @@ import { SAMPLE_WORLD } from '../model/sample.ts';
 import { indexWorld } from './worldIndex.ts';
 import { evalCondition, type RunState } from './conditions.ts';
 import {
-  battleXp, bumpMastery, castSpell, initBattle, playerMaxHp, playerMaxMp, setTarget, spellCost,
-  tierOf, type BattlePlayer,
+  battleXp, bumpMastery, castSpell, initBattle, initBossBattle, playerMaxHp, playerMaxMp,
+  setTarget, spellCost, tierOf, type BattlePlayer,
 } from './battle.ts';
 import { mulberry32 } from './rng.ts';
+import type { BossSpecial } from '../model/index.ts';
 
 const runState = (over: Partial<RunState> = {}): RunState => ({
   bossesDefeated: new Set(), flags: new Set(), itemsHeld: new Set(), mapsVisited: new Set(),
@@ -120,5 +121,60 @@ describe('battle engine', () => {
       return st.enemies[0]!.hp;
     };
     expect(hp('ember')).toBeLessThan(hp(null)); // aspect → more damage → less HP left
+  });
+});
+
+describe('boss specials', () => {
+  const bossWorld = (special: BossSpecial) =>
+    indexWorld({
+      ...SAMPLE_WORLD,
+      bosses: [{ id: 'tb', name: 'Test Boss', lv: 5, hp: 200, a0: 6, al: 1, xp: 50, weak: [], resist: [], moves: [{ name: 'smash', mult: 1 }], intro: '', sigilToast: '', special }],
+    });
+  const fresh = (i = indexWorld(SAMPLE_WORLD)) => ({
+    hp: playerMaxHp(i, 6), maxhp: playerMaxHp(i, 6), mp: playerMaxMp(i, 6), maxmp: playerMaxMp(i, 6),
+    level: 6, statuses: {}, mastery: {}, aspect: null,
+  });
+
+  it('summonAndVeil: summons adds + raises a veil shield', () => {
+    const widx = bossWorld({ kind: 'summonAndVeil', summonAtHpFrac: 0.95, summonSpecies: 'slime', summonCount: 2, summonLv: 2, veilName: 'Veil', veilEvery: 1, veilShield: 20 });
+    let st = initBossBattle(widx, widx.bosses.get('tb')!, fresh());
+    expect(st.enemies).toHaveLength(1);
+    st = castSpell(widx, st, { element: 'rime', form: 'bolt', rune: 'none' }, mulberry32(1));
+    expect(st.enemies.length).toBe(3); // boss + 2 summons
+    expect(st.enemies[0]!.shield).toBeGreaterThan(0);
+  });
+
+  it('bars: off-key casts are reduced', () => {
+    const widx = bossWorld({ kind: 'bars', barHp: 60, barKeys: ['ember'], offKeyMult: 0.25, summonSpecies: 'slime', summonLv: 2, unwriteEvery: 99, unwriteMult: 2, unwriteName: 'Unwrite' });
+    const boss = widx.bosses.get('tb')!;
+    const dmg = (el: string): number => {
+      let st = initBossBattle(widx, boss, fresh());
+      const before = st.enemies[0]!.hp;
+      st = castSpell(widx, st, { element: el, form: 'bolt', rune: 'none' }, mulberry32(3));
+      return before - st.enemies[0]!.hp;
+    };
+    expect(dmg('ember')).toBeGreaterThan(dmg('rime'));
+  });
+
+  it('enrage: hits harder below the hp threshold', () => {
+    const playerHp = (frac: number): number => {
+      const widx = bossWorld({ kind: 'enrage', belowHpFrac: frac, dmgMult: 3, weightedMove: 'smash', enragedWeightMult: 5 });
+      let st = initBossBattle(widx, widx.bosses.get('tb')!, fresh());
+      st = castSpell(widx, st, { element: 'rime', form: 'bolt', rune: 'none' }, mulberry32(8));
+      return st.player.hp;
+    };
+    expect(playerHp(0.99)).toBeLessThan(playerHp(0.01));
+  });
+
+  it('attune: the attuned element does more damage', () => {
+    const widx = bossWorld({ kind: 'attune', attunedMult: 2, otherMult: 0.5, shiftEveryPhase1: 1, shiftEveryPhase2: 1, phase2AtHpFrac: 0.5, phase3AtHpFrac: 0.2, summonSpecies: 'slime', summonCount: 1, summonLv: 2, doomName: 'Doom', doomMult: 2 });
+    const boss = widx.bosses.get('tb')!;
+    const dmg = (el: string): number => {
+      let st = initBossBattle(widx, boss, fresh());
+      const before = st.enemies[0]!.hp;
+      st = castSpell(widx, st, { element: el, form: 'bolt', rune: 'none' }, mulberry32(4));
+      return before - st.enemies[0]!.hp;
+    };
+    expect(dmg('ember')).toBeGreaterThan(dmg('rime')); // attunedTo = first element (ember)
   });
 });

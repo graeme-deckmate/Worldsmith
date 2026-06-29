@@ -1,4 +1,4 @@
-import type { Boss, Enemy, Reaction, Surge } from '../model/index.ts';
+import type { Boss, BossSpecial, Enemy, Reaction, Surge } from '../model/index.ts';
 import type { Rng } from './rng.ts';
 import { chance, pickWeighted, randInt } from './rng.ts';
 import type { WorldIndex } from './worldIndex.ts';
@@ -33,6 +33,13 @@ export interface BattleEnemy extends Fighter {
   witherTakenMult?: number; // extra incoming-damage ×  (night)
   rotDots?: boolean; // DoTs tick twice  (rot)
   actsLast?: boolean; // acts last in the enemy phase  (mire)
+  // boss-special state
+  special?: BossSpecial;
+  summonedAdds?: boolean;
+  attunedTo?: string;
+  currentBar?: number;
+  submerged?: boolean;
+  nextMoveMult?: number; // one-shot multiplier on the boss's next attack
 }
 
 export interface BattlePlayer extends Fighter {
@@ -93,11 +100,12 @@ export function initBattle(_idx: WorldIndex, spawns: { def: Enemy; lv: number }[
   };
 }
 
-export function initBossBattle(_idx: WorldIndex, boss: Boss, player: BattlePlayer): BattleState {
+export function initBossBattle(idx: WorldIndex, boss: Boss, player: BattlePlayer): BattleState {
+  const attunedTo = boss.special.kind === 'attune' ? idx.world.elements[0]?.id : undefined;
   const e: BattleEnemy = {
     name: boss.name, lv: boss.lv, atk: boss.a0 + boss.al * boss.lv, hp: boss.hp, maxhp: boss.hp,
     statuses: {}, weak: [...boss.weak], resist: [...boss.resist], moves: boss.moves, xp: boss.xp,
-    isBoss: true, bossId: boss.id, shield: 0,
+    isBoss: true, bossId: boss.id, shield: 0, special: boss.special, currentBar: 0, attunedTo,
   };
   return { enemies: [e], target: 0, player: { ...player }, round: 0, hitElements: [], log: [boss.intro || `${boss.name} blocks your path!`], over: null };
 }
@@ -315,6 +323,82 @@ function applySurge(idx: WorldIndex, s: BattleState, spell: Spell, surge: Surge,
   if (e.mpDrain) s.player.mp = Math.max(0, s.player.mp - e.mpDrain);
 }
 
+function summon(idx: WorldIndex, s: BattleState, speciesId: string, count: number, lv: number): void {
+  const def = idx.enemies.get(speciesId);
+  if (!def) return;
+  for (let i = 0; i < count; i++) s.enemies.push(makeEnemy(def, lv));
+}
+
+/** How a boss mechanic modifies incoming spell damage (submerge/attune/bars gating). */
+function bossIncomingMult(boss: BattleEnemy, spell: Spell): number {
+  const sp = boss.special;
+  if (!sp) return 1;
+  if (sp.kind === 'submerge' && boss.submerged) return 0.3; // dived: hard to hit
+  if (sp.kind === 'attune') {
+    const matches = spell.element === boss.attunedTo || spell.element2 === boss.attunedTo;
+    return matches ? sp.attunedMult : sp.otherMult;
+  }
+  if (sp.kind === 'bars') {
+    const key = sp.barKeys[boss.currentBar ?? 0];
+    const onKey = spell.element === key || spell.element2 === key;
+    return onKey ? 1 : sp.offKeyMult;
+  }
+  return 1;
+}
+
+/** Run a boss's per-turn mechanic (summons, veils, submerge, attune shift, unwrite). */
+function bossPhase(idx: WorldIndex, s: BattleState, boss: BattleEnemy, _rng: Rng): void {
+  const sp = boss.special;
+  if (!sp) return;
+  if (sp.kind === 'summonAndVeil') {
+    if (!boss.summonedAdds && boss.hp <= boss.maxhp * sp.summonAtHpFrac) {
+      summon(idx, s, sp.summonSpecies, sp.summonCount, sp.summonLv);
+      boss.summonedAdds = true;
+      s.log.push(`${boss.name} summons aid!`);
+    }
+    if (s.round % sp.veilEvery === 0) {
+      boss.shield += sp.veilShield;
+      s.log.push(`${boss.name} raises ${sp.veilName} (+${String(sp.veilShield)} shield).`);
+    }
+  } else if (sp.kind === 'submerge') {
+    if (boss.submerged) {
+      boss.submerged = false;
+      boss.nextMoveMult = sp.breachMult;
+      s.log.push(`${boss.name} breaches: ${sp.breachName}!`);
+    } else if (s.round % sp.every === 0) {
+      boss.submerged = true;
+      s.log.push(`${boss.name} submerges out of reach.`);
+    }
+  } else if (sp.kind === 'attune') {
+    const els = idx.world.elements.map((e) => e.id);
+    if (els.length > 0) {
+      const cur = boss.attunedTo ?? els[0]!;
+      const next = els[(els.indexOf(cur) + 1) % els.length]!;
+      boss.attunedTo = next;
+      s.log.push(`${boss.name} attunes to ${idx.elements.get(next)?.label ?? next}.`);
+    }
+    if (!boss.summonedAdds && boss.hp <= boss.maxhp * sp.phase3AtHpFrac) {
+      summon(idx, s, sp.summonSpecies, sp.summonCount, sp.summonLv);
+      boss.summonedAdds = true;
+      boss.nextMoveMult = sp.doomMult;
+      s.log.push(`${boss.name}: ${sp.doomName}!`);
+    }
+  } else if (sp.kind === 'bars') {
+    const bars = Math.max(1, sp.barKeys.length);
+    const perBar = boss.maxhp / bars;
+    const bar = Math.min(bars - 1, Math.floor((boss.maxhp - boss.hp) / perBar));
+    if ((boss.currentBar ?? 0) !== bar) {
+      boss.currentBar = bar;
+      s.log.push(`${boss.name} shifts to a new bar.`);
+    }
+    if (s.round % sp.unwriteEvery === 0) {
+      summon(idx, s, sp.summonSpecies, 1, sp.summonLv);
+      boss.nextMoveMult = sp.unwriteMult;
+      s.log.push(`${boss.name}: ${sp.unwriteName}!`);
+    }
+  }
+}
+
 /** Player casts a spell at the focused enemy, then enemies act and statuses tick. */
 export function castSpell(idx: WorldIndex, state: BattleState, spell: Spell, rng: Rng): BattleState {
   if (state.over) return state;
@@ -357,6 +441,7 @@ export function castSpell(idx: WorldIndex, state: BattleState, spell: Spell, rng
       if (hb) dmg *= 1 + hb;
     }
     dmg *= enemyTakenMult(idx, target);
+    dmg *= bossIncomingMult(target, spell);
     const final = Math.max(1, Math.round(dmg));
     damageEnemy(target, final, rider?.ignoreShield === true);
     s.hitElements.push(spell.element);
@@ -403,17 +488,27 @@ function enemyPhase(idx: WorldIndex, s: BattleState, rng: Rng): void {
   const order = [...s.enemies].sort((a, b) => Number(a.actsLast ?? false) - Number(b.actsLast ?? false));
   for (const e of order) {
     if (e.hp <= 0) continue;
+    if (e.isBoss && e.special) bossPhase(idx, s, e, rng);
+    if (e.hp <= 0) continue;
     if (e.statuses['stunned'] !== undefined) {
       s.log.push(`${e.name} is stunned and cannot act.`);
       continue;
     }
-    const move = pickWeighted(rng, e.moves.map((m) => ({ item: m, weight: m.weight ?? 1 }))) ?? e.moves[0];
+    // enrage: bias the weighted move when below the hp threshold
+    const enraged = e.special?.kind === 'enrage' && e.hp <= e.maxhp * e.special.belowHpFrac;
+    const weights = e.moves.map((m) => ({
+      item: m,
+      weight: (m.weight ?? 1) * (enraged && e.special?.kind === 'enrage' && m.name === e.special.weightedMove ? e.special.enragedWeightMult : 1),
+    }));
+    const move = pickWeighted(rng, weights) ?? e.moves[0];
     if (!move) continue;
     let dealtMult = 1;
     for (const sid of Object.keys(e.statuses)) {
       const def = idx.enemyStatuses.get(sid);
       if (def?.dealtMult !== undefined) dealtMult *= def.dealtMult;
     }
+    if (enraged && e.special?.kind === 'enrage') dealtMult *= e.special.dmgMult;
+    if (e.nextMoveMult !== undefined) { dealtMult *= e.nextMoveMult; e.nextMoveMult = undefined; }
     if (e.steamMult !== undefined) { dealtMult *= e.steamMult; e.steamMult = undefined; }
     const dmg = Math.max(0, Math.round(e.atk * move.mult * dealtMult));
     if (dmg > 0) {
