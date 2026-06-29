@@ -1,6 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useWorld } from '../store/worldStore.ts';
 import type { World } from '../model/index.ts';
+import { shareUrl } from '../store/share.ts';
 
 function download(world: World, text: string): void {
   const blob = new Blob([text], { type: 'application/json' });
@@ -14,9 +15,17 @@ function download(world: World, text: string): void {
 
 /** Editor top bar: world name, undo/redo, import/export, validation summary. */
 export function TopBar({ onClose, onPlaytest }: { onClose: () => void; onPlaytest: () => void }) {
-  const { world, issues, exportJson, importJson, undo, redo, past, future } = useWorld();
+  const { world, issues, exportJson, importJson, duplicate, undo, redo, past, future } = useWorld();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [note, setNote] = useState('');
   if (!world) return null;
+
+  const flash = (m: string): void => { setNote(m); window.setTimeout(() => setNote(''), 1800); };
+  const onShare = (): void => {
+    const url = shareUrl(world);
+    if (!url) { flash('Too large for a link — use export'); return; }
+    void navigator.clipboard.writeText(url).then(() => flash('Share link copied')).catch(() => flash('Copy failed'));
+  };
 
   const errors = issues.filter((i) => i.level === 'error').length;
   const warns = issues.filter((i) => i.level === 'warn').length;
@@ -51,6 +60,17 @@ export function TopBar({ onClose, onPlaytest }: { onClose: () => void; onPlaytes
           onClick={redo}
         >
           redo ↪
+        </button>
+        {note && <span className="text-xs text-emerald-300">{note}</span>}
+        <button
+          className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700"
+          onClick={() => void duplicate(`${world.meta.id}_copy`, `${world.meta.name} copy`)}
+          title="Duplicate this world"
+        >
+          duplicate
+        </button>
+        <button className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700" onClick={onShare} title="Copy a share link">
+          share
         </button>
         <button
           className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700"

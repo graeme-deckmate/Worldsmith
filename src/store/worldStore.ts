@@ -6,7 +6,6 @@ import {
   type Issue,
   type World,
 } from '../model/index.ts';
-import { SAMPLE_WORLD } from '../model/sample.ts';
 import {
   deleteWorldFromDb,
   listWorlds,
@@ -34,7 +33,8 @@ interface WorldState {
 
   refreshList: () => Promise<void>;
   newWorld: (id: string, name: string) => Promise<void>;
-  loadSample: () => Promise<void>;
+  loadSampleWorld: (w: World) => Promise<void>;
+  duplicate: (id: string, name: string) => Promise<void>;
   open: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   /** Apply a structural change to the open world (recorded for undo, autosaved). */
@@ -69,8 +69,16 @@ export const useWorld = create<WorldState>((setState, getState) => ({
     await getState().refreshList();
   },
 
-  loadSample: async () => {
-    const w = commit({ ...SAMPLE_WORLD, meta: { ...SAMPLE_WORLD.meta, updatedAt: now() } });
+  loadSampleWorld: async (sample) => {
+    const w = commit({ ...sample, meta: { ...sample.meta, updatedAt: now() } });
+    setState({ world: w, issues: validateWorld(w), past: [], future: [] });
+    await getState().refreshList();
+  },
+
+  duplicate: async (id, name) => {
+    const cur = getState().world;
+    if (!cur) return;
+    const w = commit({ ...cur, meta: { ...cur.meta, id, name, createdAt: now(), updatedAt: now() } });
     setState({ world: w, issues: validateWorld(w), past: [], future: [] });
     await getState().refreshList();
   },

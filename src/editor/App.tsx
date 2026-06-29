@@ -15,6 +15,7 @@ import { EntityListPanel } from './form/EntityListPanel.tsx';
 import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
 import { Player } from '../player/Player.tsx';
+import { clearHash, worldFromHash } from '../store/share.ts';
 
 /** Sections with a bespoke editor; stat sections use the generic EntityListPanel. */
 const PANELS: Record<string, FC> = {
@@ -33,6 +34,11 @@ export function App() {
 
   useEffect(() => {
     void refreshList();
+    const shared = worldFromHash();
+    if (shared) {
+      clearHash();
+      void useWorld.getState().loadSampleWorld(shared);
+    }
   }, [refreshList]);
 
   if (!world) return <HomeScreen />;

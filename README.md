@@ -22,16 +22,19 @@ npm run lint       # oxlint
 npm run build      # production build (dist/)
 ```
 
-## Build phases
+See [docs/GUIDE.md](docs/GUIDE.md) for a full tour of the editors, the area-gate condition
+DSL, and the playtest.
 
-- **E0** — scaffold, World schema (Zod) + migrate, IndexedDB persistence, import/export, sample world. ✅
-- **E1** — pixel colour editor (sprite + palette).
-- **E2** — stat content editors (elements, forms, runes, statuses, items, classes…).
-- **E3** — enemies + bosses editor.
-- **E4** — map editor (terrain painter, entities, world-graph, live validation).
-- **E5** — area-unlock rules + dialogue + problems panel.
-- **E6** — data-driven runtime + Playtest player.
-- **E7** — polish, docs, sample worlds, sharing.
+## Build phases (all shipped)
+
+- **E0** — scaffold, World schema (Zod) + migrate, IndexedDB persistence, import/export. ✅
+- **E1** — pixel colour editor (sprite + palette). ✅
+- **E2** — stat content editors (elements, forms, runes, statuses, items, classes…). ✅
+- **E3** — enemies + bosses editor (moves/riders, 5 boss archetypes, zones). ✅
+- **E4** — map editor (terrain painter, 19 entity kinds, zones, exits, live validation). ✅
+- **E5** — area-unlock rules + dialogue + whole-world problems panel. ✅
+- **E6** — data-driven runtime + Playtest player. ✅
+- **E7** — polish, docs, sample worlds (Emberfell + Froststep), share links. ✅
 
 The content model mirrors the [Sigilbound II](https://github.com/graeme-deckmate/Sigilbound2)
 game's data shapes, with open string ids so any world can be authored from scratch.

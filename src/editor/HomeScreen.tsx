@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorld } from '../store/worldStore.ts';
+import { SAMPLES } from '../model/samples.ts';
 
-/** Landing screen: create, open, import, or load the sample world. */
+/** Landing screen: create, open, import, or load a sample world. */
 export function HomeScreen() {
-  const { summaries, refreshList, newWorld, loadSample, open, remove, importJson } = useWorld();
+  const { summaries, refreshList, newWorld, loadSampleWorld, open, remove, importJson } = useWorld();
   const [id, setId] = useState('my_world');
   const [name, setName] = useState('My World');
   const [error, setError] = useState('');
@@ -58,12 +59,6 @@ export function HomeScreen() {
             </button>
             <button
               className="rounded bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 text-sm"
-              onClick={() => void loadSample()}
-            >
-              Load sample
-            </button>
-            <button
-              className="rounded bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 text-sm"
               onClick={() => fileRef.current?.click()}
             >
               Import .world.json
@@ -81,6 +76,22 @@ export function HomeScreen() {
             />
           </div>
           {error && <p className="text-rose-400 text-xs mt-2">Import failed: {error}</p>}
+        </div>
+
+        <div className="mt-6">
+          <h2 className="font-semibold mb-2">Start from a sample</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {SAMPLES.map((s) => (
+              <button
+                key={s.id}
+                className="text-left rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-violet-500 p-3"
+                onClick={() => void loadSampleWorld(s.world)}
+              >
+                <div className="font-medium">{s.name}</div>
+                <div className="text-xs text-zinc-500 mt-0.5">{s.description}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-6">
