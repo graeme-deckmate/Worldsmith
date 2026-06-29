@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { SAMPLE_WORLD } from '../model/sample.ts';
 import { indexWorld } from './worldIndex.ts';
 import { evalCondition, type RunState } from './conditions.ts';
-import { battleXp, castSpell, initBattle, playerMaxHp, playerMaxMp, setTarget, type BattlePlayer } from './battle.ts';
+import {
+  battleXp, bumpMastery, castSpell, initBattle, playerMaxHp, playerMaxMp, setTarget, spellCost,
+  tierOf, type BattlePlayer,
+} from './battle.ts';
 import { mulberry32 } from './rng.ts';
 
 const runState = (over: Partial<RunState> = {}): RunState => ({
@@ -33,7 +36,7 @@ describe('battle engine', () => {
 
   const fresh = (): BattlePlayer => ({
     hp: playerMaxHp(idx, 5), maxhp: playerMaxHp(idx, 5), mp: playerMaxMp(idx, 5), maxmp: playerMaxMp(idx, 5),
-    level: 5, statuses: {},
+    level: 5, statuses: {}, mastery: {}, aspect: null,
   });
 
   it('is deterministic for a fixed seed and resolves', () => {
@@ -92,5 +95,30 @@ describe('battle engine', () => {
     // ember is resisted by the slime, so it survives the hit and the surge rolls.
     st = castSpell(sidx, st, { element: 'ember', form: 'bolt', rune: 'wyrd' }, mulberry32(2));
     expect(st.log.some((l) => l.includes('BITE'))).toBe(true);
+  });
+
+  it('twin casts cost more (twinMpMult)', () => {
+    const single = spellCost(idx, { element: 'rime', form: 'bolt', rune: 'none' });
+    const twin = spellCost(idx, { element: 'rime', element2: 'ember', form: 'bolt', rune: 'none' });
+    expect(twin).toBeGreaterThan(single);
+  });
+
+  it('mastery grows from hits and tiers up', () => {
+    expect(tierOf(idx, 0)).toBe(0);
+    expect(tierOf(idx, 10)).toBe(1);
+    expect(tierOf(idx, 25)).toBe(2);
+    expect(tierOf(idx, 50)).toBe(3);
+    const m = bumpMastery({}, ['rime', 'rime', 'ember'], 50);
+    expect(m['rime']).toBe(1);
+    expect(m['ember']).toBe(1);
+  });
+
+  it('aspect amplifies a matching-element cast', () => {
+    const hp = (aspect: string | null): number => {
+      let st = initBattle(idx, [{ def: slime!, lv: 12 }], { ...fresh(), aspect });
+      st = castSpell(idx, st, { element: 'ember', form: 'bolt', rune: 'none' }, mulberry32(5));
+      return st.enemies[0]!.hp;
+    };
+    expect(hp('ember')).toBeLessThan(hp(null)); // aspect → more damage → less HP left
   });
 });

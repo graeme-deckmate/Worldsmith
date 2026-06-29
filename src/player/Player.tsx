@@ -5,8 +5,8 @@ import { evalCondition, type RunState } from '../runtime/conditions.ts';
 import { mulberry32, chance, pickWeighted } from '../runtime/rng.ts';
 import { availableIds } from '../runtime/unlocks.ts';
 import {
-  battleXp, castSpell, defeatedBossIds, defend, initBattle, initBossBattle, playerMaxHp,
-  playerMaxMp, setTarget, zoneLevel, type BattleState, type Spell,
+  battleXp, bumpMastery, castSpell, defeatedBossIds, defend, initBattle, initBossBattle,
+  masteryCap, playerMaxHp, playerMaxMp, setTarget, zoneLevel, type BattleState, type Spell,
 } from '../runtime/battle.ts';
 import { entityAt, exitAt, gateForMap, inBounds, isSolidTile, tileAt, zoneAt } from '../runtime/overworld.ts';
 import { OverworldView } from './OverworldView.tsx';
@@ -29,6 +29,8 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
   const [bossesDefeated, setBosses] = useState<Set<string>>(new Set());
   const [flags] = useState<Set<string>>(new Set());
   const [visited, setVisited] = useState<Set<string>>(new Set([startMap?.id ?? '']));
+  const [mastery, setMastery] = useState<Record<string, number>>({});
+  const [aspect, setAspect] = useState<string | null>(null);
 
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [dialogue, setDialogue] = useState<{ speaker: string; pages: string[]; page: number } | null>(null);
@@ -55,14 +57,28 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
       const element = elements.some((e) => e.id === s.element) ? s.element : elements[0]?.id ?? '';
       const form = forms.some((f) => f.id === s.form) ? s.form : forms[0]?.id ?? '';
       const rune = runes.some((r) => r.id === s.rune) ? s.rune : runes[0]?.id ?? '';
-      return element === s.element && form === s.form && rune === s.rune ? s : { element, form, rune };
+      const element2 = s.element2 && s.element2 !== element && elements.some((e) => e.id === s.element2) ? s.element2 : undefined;
+      return element === s.element && form === s.form && rune === s.rune && element2 === s.element2
+        ? s
+        : { element, element2, form, rune };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partKey]);
 
   const runState = (): RunState => ({ bossesDefeated, flags, itemsHeld: new Set(), mapsVisited: visited, level, sigilBosses: world.sigilBosses });
   const flash = (m: string): void => { setToast(m); window.setTimeout(() => setToast(''), 1800); };
-  const fighter = () => ({ hp, maxhp, mp, maxmp, level, statuses: {} });
+  const fighter = () => ({ hp, maxhp, mp, maxmp, level, statuses: {}, mastery, aspect });
+
+  /** Rest at a spring/shrine: full heal + rotate the ascendant aspect element. */
+  const rest = (): void => {
+    setHp(maxhp);
+    setMp(maxmp);
+    const pool = world.elements.map((e) => e.id).filter((id) => id !== aspect);
+    if (pool.length === 0) { flash('You rest and recover.'); return; }
+    const next = pool[Math.floor(rng.current() * pool.length)] ?? null;
+    setAspect(next);
+    flash(`You rest. The ${idx.elements.get(next ?? '')?.label ?? next} aspect rises.`);
+  };
 
   const startBoss = (bossId: string): void => {
     const b = idx.bosses.get(bossId);
@@ -116,6 +132,8 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
         if (!bossesDefeated.has(ent.id)) { startBoss(ent.id); return; }
       } else if (ent.kind === 'npc' || ent.kind === 'sign' || ent.kind === 'lore') {
         openDialogue(ent.dialogue); return;
+      } else if (ent.kind === 'spring' || ent.kind === 'shrine') {
+        rest(); return;
       } else {
         flash(`A ${ent.kind}.`); return;
       }
@@ -160,6 +178,7 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
       while (nxp >= need) { nxp -= need; lv += 1; need = lv * 20; }
       if (lv !== level) { setLevel(lv); setHp(playerMaxHp(idx, lv)); setMp(playerMaxMp(idx, lv)); flash(`Level up! Lv ${String(lv)}`); }
       setXp(nxp);
+      setMastery((m) => bumpMastery(m, b.hitElements, masteryCap(idx)));
       const fallen = defeatedBossIds(b);
       if (fallen.length > 0) setBosses((s) => { const n = new Set(s); fallen.forEach((id) => n.add(id)); return n; });
     } else if (b.over === 'lose' && startMap) {
@@ -219,6 +238,7 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
             onDefend={() => setBattle((b) => (b ? defend(idx, b, rng.current) : b))}
             onDone={finishBattle}
             onTarget={(i) => setBattle((b) => (b ? setTarget(b, i) : b))}
+            aspect={aspect}
           />
         )}
       </div>

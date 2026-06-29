@@ -23,6 +23,7 @@ export function BattleView({
   onDefend,
   onDone,
   onTarget,
+  aspect,
 }: {
   state: BattleState;
   elements: Opt[];
@@ -34,6 +35,7 @@ export function BattleView({
   onDefend: () => void;
   onDone: () => void;
   onTarget: (i: number) => void;
+  aspect: string | null;
 }) {
   const sel = 'rounded bg-zinc-800 px-2 py-1.5 text-sm outline-none focus:ring-1 ring-violet-500';
   const playerStatuses = Object.keys(state.player.statuses);
@@ -70,7 +72,10 @@ export function BattleView({
 
         {/* player */}
         <div className="flex items-center justify-between mt-3">
-          <div className="font-semibold text-violet-200">You <span className="text-zinc-500 text-xs">Lv {state.player.level}</span></div>
+          <div className="font-semibold text-violet-200">
+            You <span className="text-zinc-500 text-xs">Lv {state.player.level}</span>
+            {aspect && <span className="text-[11px] text-amber-300 ml-2">✶ {aspect} aspect</span>}
+          </div>
           <div className="flex flex-col items-end gap-1">
             <Bar value={state.player.hp} max={state.player.maxhp} color="#5fd6a0" />
             <Bar value={state.player.mp} max={state.player.maxmp} color="#5ad1ff" />
@@ -96,6 +101,12 @@ export function BattleView({
             <label className="text-[11px] text-zinc-400 flex flex-col gap-0.5">element
               <select className={sel} value={spell.element} onChange={(e) => setSpell({ ...spell, element: e.target.value })}>
                 {elements.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] text-zinc-400 flex flex-col gap-0.5">+ twin
+              <select className={sel} value={spell.element2 ?? ''} onChange={(e) => setSpell({ ...spell, element2: e.target.value || undefined })}>
+                <option value="">— none —</option>
+                {elements.filter((o) => o.id !== spell.element).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </label>
             <label className="text-[11px] text-zinc-400 flex flex-col gap-0.5">form

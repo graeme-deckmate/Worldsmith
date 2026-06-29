@@ -27,17 +27,20 @@ export interface BattleEnemy extends Fighter {
   isBoss: boolean;
   bossId?: string;
   shield: number;
-  // per-battle wheel flags (set by twin riders in E8.4)
-  steamed?: boolean;
-  noShieldTurns?: number;
-  witherAmp?: boolean;
-  rotDots?: boolean;
+  // per-battle twin-rider flags
+  steamMult?: number; // next enemy move damage ×  (steam)
+  noShieldTurns?: number; // selfShield blocked while > 0  (depth)
+  witherTakenMult?: number; // extra incoming-damage ×  (night)
+  rotDots?: boolean; // DoTs tick twice  (rot)
+  actsLast?: boolean; // acts last in the enemy phase  (mire)
 }
 
 export interface BattlePlayer extends Fighter {
   mp: number;
   maxmp: number;
   level: number;
+  mastery: Record<string, number>; // elementId -> points
+  aspect: string | null; // ascendant element id
 }
 
 export interface BattleState {
@@ -45,12 +48,14 @@ export interface BattleState {
   target: number; // index of the focused enemy
   player: BattlePlayer;
   round: number;
+  hitElements: string[]; // elements that landed a hit (for mastery growth)
   log: string[];
   over: null | 'win' | 'lose';
 }
 
 export interface Spell {
   element: string;
+  element2?: string; // optional twin element
   form: string;
   rune: string;
 }
@@ -83,7 +88,7 @@ export function initBattle(_idx: WorldIndex, spawns: { def: Enemy; lv: number }[
   const enemies = spawns.map((s) => makeEnemy(s.def, s.lv));
   const names = enemies.map((e) => e.name).join(', ');
   return {
-    enemies, target: 0, player: { ...player }, round: 0,
+    enemies, target: 0, player: { ...player }, round: 0, hitElements: [],
     log: [enemies.length > 1 ? `Ambushed by ${names}!` : `A wild ${names} appears!`], over: null,
   };
 }
@@ -94,7 +99,7 @@ export function initBossBattle(_idx: WorldIndex, boss: Boss, player: BattlePlaye
     statuses: {}, weak: [...boss.weak], resist: [...boss.resist], moves: boss.moves, xp: boss.xp,
     isBoss: true, bossId: boss.id, shield: 0,
   };
-  return { enemies: [e], target: 0, player: { ...player }, round: 0, log: [boss.intro || `${boss.name} blocks your path!`], over: null };
+  return { enemies: [e], target: 0, player: { ...player }, round: 0, hitElements: [], log: [boss.intro || `${boss.name} blocks your path!`], over: null };
 }
 
 function aliveIndices(s: BattleState): number[] {
@@ -121,10 +126,10 @@ function elementMult(idx: WorldIndex, element: string, enemy: BattleEnemy): numb
   return 1;
 }
 
-/** Apply damage to an enemy, absorbing into its shield first. */
-function damageEnemy(e: BattleEnemy, dmg: number): void {
+/** Apply damage to an enemy, absorbing into its shield first (unless ignored). */
+function damageEnemy(e: BattleEnemy, dmg: number, ignoreShield = false): void {
   let d = dmg;
-  if (e.shield > 0) {
+  if (e.shield > 0 && !ignoreShield) {
     const absorbed = Math.min(e.shield, d);
     e.shield -= absorbed;
     d -= absorbed;
@@ -132,24 +137,93 @@ function damageEnemy(e: BattleEnemy, dmg: number): void {
   e.hp = Math.max(0, e.hp - d);
 }
 
+type TwinRider = NonNullable<ReturnType<typeof twinPairFor>>['effect'];
+
+/** Roll status procs (dual at half for twins) with mastery/aspect bonuses + rider flags. */
+function rollProcs(idx: WorldIndex, s: BattleState, target: BattleEnemy, spell: Spell, rune: ReturnType<WorldIndex['runes']['get']>, rng: Rng, rider: TwinRider): void {
+  const procFrac = WTUNE(idx, 'twinProcFrac', 0.5);
+  const parts = spell.element2
+    ? [{ el: spell.element, frac: procFrac }, { el: spell.element2, frac: procFrac }]
+    : [{ el: spell.element, frac: 1 }];
+  for (const part of parts) {
+    const elDef = idx.elements.get(part.el);
+    if (!elDef || target.hp <= 0) continue;
+    let p = (elDef.proc + (rune?.procBonus ?? 0)) * part.frac;
+    if (masteryTier(idx, s.player.mastery[part.el] ?? 0) >= 2) p += WTUNE(idx, 'masteryT2Proc', 0.1);
+    if (s.player.aspect === part.el) p += WTUNE(idx, 'aspectProc', 0.1);
+    if (chance(rng, p)) {
+      const st = idx.enemyStatuses.get(elDef.status);
+      if (st) {
+        target.statuses[st.id] = st.duration;
+        s.log.push(`${target.name} is ${st.label}!`);
+        if (rider?.extraDotTick && st.dot) target.rotDots = true;
+        if (rider?.witherTakenMult !== undefined) target.witherTakenMult = rider.witherTakenMult;
+      }
+    }
+  }
+}
+
+/** Apply a twin rider's post-hit effects (mp gain, steam/depth/mire marks, arc). */
+function applyRiderPostHit(s: BattleState, target: BattleEnemy, rider: NonNullable<TwinRider>, dmg: number, rng: Rng): void {
+  if (rider.mpOnHit) s.player.mp = Math.min(s.player.maxmp, s.player.mp + rider.mpOnHit);
+  if (rider.enemyNextMoveMult !== undefined && target.hp > 0) target.steamMult = rider.enemyNextMoveMult;
+  if (rider.blockEnemyShieldTurns && target.hp > 0) target.noShieldTurns = rider.blockEnemyShieldTurns;
+  if (rider.enemyActsLast && target.hp > 0) target.actsLast = true;
+  if (rider.arcFrac) {
+    const others = s.enemies.filter((e) => e.hp > 0 && e !== target);
+    if (others.length > 0) {
+      const pick = others[randInt(rng, 0, others.length - 1)];
+      if (pick) {
+        const a = Math.max(1, Math.round(dmg * rider.arcFrac));
+        damageEnemy(pick, a);
+        s.log.push(`The arc leaps to ${pick.name} for ${String(a)}.`);
+      }
+    }
+  }
+}
+
 export function spellCost(idx: WorldIndex, spell: Spell): number {
   const form = idx.forms.get(spell.form);
   const rune = idx.runes.get(spell.rune);
-  return Math.max(1, Math.ceil((form?.mp ?? 1) * (rune?.mp ?? 1) * TUNING(idx, 'combat', 'costBase', 3)));
+  let cost = (form?.mp ?? 1) * (rune?.mp ?? 1) * TUNING(idx, 'combat', 'costBase', 3);
+  if (spell.element2) cost *= WTUNE(idx, 'twinMpMult', 1.6);
+  return Math.max(1, Math.ceil(cost));
 }
 
 function basePower(idx: WorldIndex, level: number): number {
   return TUNING(idx, 'combat', 'basePower', 8) + level * TUNING(idx, 'combat', 'levelScaling', 2);
 }
 
-/** Product of a target's status `takenMult` (withered/shocked amplify incoming dmg). */
+/** Product of a target's status `takenMult` (+ night-twin amp) for incoming dmg. */
 function enemyTakenMult(idx: WorldIndex, enemy: BattleEnemy): number {
   let m = 1;
   for (const sid of Object.keys(enemy.statuses)) {
     const def = idx.enemyStatuses.get(sid);
     if (def?.takenMult !== undefined) m *= def.takenMult;
   }
+  if (enemy.witherTakenMult) m *= enemy.witherTakenMult;
   return m;
+}
+
+function masteryTier(idx: WorldIndex, points: number): 0 | 1 | 2 | 3 {
+  if (points >= WTUNE(idx, 'masteryT3', 50)) return 3;
+  if (points >= WTUNE(idx, 'masteryT2', 25)) return 2;
+  if (points >= WTUNE(idx, 'masteryT1', 10)) return 1;
+  return 0;
+}
+
+function twinPairFor(idx: WorldIndex, a: string, b: string) {
+  return idx.world.wheel.twinPairs.find(
+    (p) => (p.a === a && p.b === b) || (p.a === b && p.b === a),
+  ) ?? null;
+}
+
+/** Twin matchup: the better of the two elements' mults, capped. */
+function twinMatchup(idx: WorldIndex, spell: Spell, enemy: BattleEnemy, cap: number): number {
+  if (!spell.element2) return elementMult(idx, spell.element, enemy);
+  const a = elementMult(idx, spell.element, enemy);
+  const b = elementMult(idx, spell.element2, enemy);
+  return Math.min(cap, Math.max(a, b));
 }
 
 /** Product of the player's status `spellPowerMult` (e.g. chilled weakens casts). */
@@ -252,40 +326,54 @@ export function castSpell(idx: WorldIndex, state: BattleState, spell: Spell, rng
   const element = idx.elements.get(spell.element);
   const form = idx.forms.get(spell.form);
   const rune = idx.runes.get(spell.rune);
-  const cost = spellCost(idx, spell);
+  const pair = spell.element2 ? twinPairFor(idx, spell.element, spell.element2) : null;
+  const rider = pair?.effect;
+  const mTier = masteryTier(idx, s.player.mastery[spell.element] ?? 0);
+  let cost = spellCost(idx, spell);
+  if (mTier >= 3) cost = Math.max(1, cost + WTUNE(idx, 'masteryT3Cost', -1));
 
   if (s.player.mp < cost) {
     s.log.push('Not enough focus — you steady yourself instead.');
     s.player.mp = Math.min(s.player.maxmp, s.player.mp + Math.ceil(s.player.maxmp * 0.35));
   } else {
     s.player.mp -= cost;
-    // pipeline: base → element matchup → player power → variance → crit →
-    // reaction hit-amp → enemy taken-mult → round → shield/apply.
+    // pipeline: base → mastery T1 → aspect → twin matchup → player power →
+    // variance → crit → reaction hit-amp → enemy taken-mult → round → shield.
     let dmg = basePower(idx, s.player.level) * (form?.pw ?? 1) * (rune?.pw ?? 1);
-    dmg *= elementMult(idx, spell.element, target);
+    if (mTier >= 1) dmg *= WTUNE(idx, 'masteryT1Power', 1.05);
+    if (s.player.aspect === spell.element) dmg *= WTUNE(idx, 'aspectPower', 1.1);
+    const cap = rider?.matchupCap ?? WTUNE(idx, 'twinMatchupCap', 1.3);
+    dmg *= twinMatchup(idx, spell, target, cap);
     dmg *= playerPowerMult(idx, s.player);
     dmg *= 0.9 + rng() * 0.2;
     const critChance = rune?.crit?.chance ?? TUNING(idx, 'combat', 'critChance', 0.08);
     const critMult = rune?.crit?.mult ?? TUNING(idx, 'combat', 'critMult', 1.5);
     const crit = chance(rng, critChance);
     if (crit) dmg *= critMult;
-    const reaction = reactionFor(idx, spell.element, target);
-    if (reaction?.effect?.hitBonus) dmg *= 1 + reaction.effect.hitBonus;
+    let reaction = reactionFor(idx, spell.element, target);
+    if (!reaction && spell.element2) reaction = reactionFor(idx, spell.element2, target);
+    if (reaction) {
+      const hb = rider?.reactionHitBonus ?? reaction.effect?.hitBonus;
+      if (hb) dmg *= 1 + hb;
+    }
     dmg *= enemyTakenMult(idx, target);
     const final = Math.max(1, Math.round(dmg));
-    damageEnemy(target, final);
-    s.log.push(`You cast ${element?.label ?? spell.element} ${form?.label ?? spell.form} at ${target.name} for ${String(final)}${crit ? ' (crit!)' : ''}.`);
-    // reaction non-hit portion + setup consumption
+    damageEnemy(target, final, rider?.ignoreShield === true);
+    s.hitElements.push(spell.element);
+    if (spell.element2) s.hitElements.push(spell.element2);
+    const castName = pair ? pair.prefix : (element?.label ?? spell.element);
+    s.log.push(`You cast ${castName} ${form?.label ?? spell.form} at ${target.name} for ${String(final)}${crit ? ' (crit!)' : ''}.`);
+    if (rider) applyRiderPostHit(s, target, rider, final, rng);
     if (reaction) applyReaction(idx, s, target, reaction, rune?.keepsReactionSetup === true);
-    // status proc
-    if (element && target.hp > 0 && chance(rng, element.proc + (rune?.procBonus ?? 0))) {
-      const st = idx.enemyStatuses.get(element.status);
+    // wildfire: spread a status to all when the target falls
+    if (rider?.spreadStatusOnKill && target.hp <= 0) {
+      const st = idx.enemyStatuses.get(rider.spreadStatusOnKill);
       if (st) {
-        target.statuses[st.id] = st.duration;
-        s.log.push(`${target.name} is ${st.label}!`);
+        for (const en of s.enemies) if (en.hp > 0) en.statuses[st.id] = st.duration;
+        s.log.push('The flames spread!');
       }
     }
-    // surge roll (never into a won battle)
+    rollProcs(idx, s, target, spell, rune, rng, rider);
     if (aliveIndices(s).length > 0) maybeSurge(idx, s, spell, rng);
   }
 
@@ -311,7 +399,9 @@ export function defend(idx: WorldIndex, state: BattleState, rng: Rng): BattleSta
 
 function enemyPhase(idx: WorldIndex, s: BattleState, rng: Rng): void {
   s.round += 1;
-  for (const e of s.enemies) {
+  // mire twin makes flagged enemies act last
+  const order = [...s.enemies].sort((a, b) => Number(a.actsLast ?? false) - Number(b.actsLast ?? false));
+  for (const e of order) {
     if (e.hp <= 0) continue;
     if (e.statuses['stunned'] !== undefined) {
       s.log.push(`${e.name} is stunned and cannot act.`);
@@ -324,7 +414,7 @@ function enemyPhase(idx: WorldIndex, s: BattleState, rng: Rng): void {
       const def = idx.enemyStatuses.get(sid);
       if (def?.dealtMult !== undefined) dealtMult *= def.dealtMult;
     }
-    if (e.steamed) { dealtMult *= WTUNE(idx, 'steamMult', 0.7); e.steamed = false; }
+    if (e.steamMult !== undefined) { dealtMult *= e.steamMult; e.steamMult = undefined; }
     const dmg = Math.max(0, Math.round(e.atk * move.mult * dealtMult));
     if (dmg > 0) {
       s.player.hp = Math.max(0, s.player.hp - dmg);
@@ -339,7 +429,7 @@ function enemyPhase(idx: WorldIndex, s: BattleState, rng: Rng): void {
       s.log.push(`You are afflicted with ${ps?.label ?? rider.status}!`);
     } else if (rider?.type === 'mpDrain') {
       s.player.mp = Math.max(0, s.player.mp - rider.amount);
-    } else if (rider?.type === 'selfShield') {
+    } else if (rider?.type === 'selfShield' && (e.noShieldTurns ?? 0) <= 0) {
       e.shield += rider.amount;
     }
     if ((e.noShieldTurns ?? 0) > 0) e.noShieldTurns = (e.noShieldTurns ?? 0) - 1;
@@ -347,22 +437,25 @@ function enemyPhase(idx: WorldIndex, s: BattleState, rng: Rng): void {
   }
 }
 
-function tickEnemyDots(idx: WorldIndex, e: BattleEnemy, s: BattleState): void {
+function tickEnemyDots(idx: WorldIndex, e: BattleEnemy, s: BattleState, aspectStatus: string | undefined): void {
   for (const sid of Object.keys(e.statuses)) {
     const def = idx.enemyStatuses.get(sid);
     if (def?.dot) {
-      const d = Math.round(def.dot.base + def.dot.perLv * e.lv);
-      e.hp = Math.max(0, e.hp - d);
-      if (d > 0) s.log.push(`${e.name} takes ${String(d)} from ${def.label}.`);
+      let d = def.dot.base + def.dot.perLv * e.lv;
+      if (aspectStatus && sid === aspectStatus) d *= WTUNE(idx, 'aspectDot', 1.1);
+      const r = Math.round(d);
+      e.hp = Math.max(0, e.hp - r);
+      if (r > 0) s.log.push(`${e.name} takes ${String(r)} from ${def.label}.`);
     }
   }
 }
 
 function tickAll(idx: WorldIndex, s: BattleState): void {
+  const aspectStatus = s.player.aspect ? idx.elements.get(s.player.aspect)?.status : undefined;
   for (const e of s.enemies) {
     if (e.hp <= 0) continue;
-    tickEnemyDots(idx, e, s);
-    if (e.rotDots && e.hp > 0) tickEnemyDots(idx, e, s); // rot twin: DoTs tick twice
+    tickEnemyDots(idx, e, s, aspectStatus);
+    if (e.rotDots && e.hp > 0) tickEnemyDots(idx, e, s, aspectStatus); // rot twin: DoTs tick twice
     for (const sid of Object.keys(e.statuses)) {
       const left = (e.statuses[sid] ?? 0) - 1;
       if (left <= 0) delete e.statuses[sid];
@@ -405,8 +498,9 @@ function clone(s: BattleState): BattleState {
   return {
     enemies: s.enemies.map((e) => ({ ...e, statuses: { ...e.statuses } })),
     target: s.target,
-    player: { ...s.player, statuses: { ...s.player.statuses } },
+    player: { ...s.player, statuses: { ...s.player.statuses }, mastery: { ...s.player.mastery } },
     round: s.round,
+    hitElements: [...s.hitElements],
     log: [...s.log],
     over: s.over,
   };
@@ -415,4 +509,20 @@ function clone(s: BattleState): BattleState {
 /** Pick a random enemy level within a zone's band. */
 export function zoneLevel(rng: Rng, levelMin: number, levelMax: number): number {
   return randInt(rng, levelMin, Math.max(levelMin, levelMax));
+}
+
+export function masteryCap(idx: WorldIndex): number {
+  return WTUNE(idx, 'masteryCap', 50);
+}
+
+/** +1 mastery for each element that landed a hit, capped. Returns a new map. */
+export function bumpMastery(mastery: Record<string, number>, hitElements: readonly string[], cap: number): Record<string, number> {
+  const next = { ...mastery };
+  for (const el of new Set(hitElements)) next[el] = Math.min(cap, (next[el] ?? 0) + 1);
+  return next;
+}
+
+/** Public mastery tier of a point total (0–3), for HUD display. */
+export function tierOf(idx: WorldIndex, points: number): 0 | 1 | 2 | 3 {
+  return masteryTier(idx, points);
 }
