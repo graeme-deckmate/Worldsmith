@@ -7,9 +7,11 @@ import { OverviewPanel } from './panels/OverviewPanel.tsx';
 import { CollectionPanel } from './panels/CollectionPanel.tsx';
 import { SpritesPanel } from './panels/SpritesPanel.tsx';
 import { PalettesPanel } from './panels/PalettesPanel.tsx';
+import { EntityListPanel } from './form/EntityListPanel.tsx';
+import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
 
-/** Sections with a dedicated editor; others fall back to the read-only browser. */
+/** Sections with a bespoke editor; stat sections use the generic EntityListPanel. */
 const PANELS: Record<string, FC> = {
   sprites: SpritesPanel,
   palettes: PalettesPanel,
@@ -28,6 +30,7 @@ export function App() {
 
   const section = SECTIONS.find((s) => s.key === active);
   const Dedicated = PANELS[active];
+  const reg = ENTITY_REGS[active];
 
   return (
     <div className="h-full flex flex-col">
@@ -39,6 +42,8 @@ export function App() {
             <OverviewPanel />
           ) : Dedicated ? (
             <Dedicated />
+          ) : reg ? (
+            <EntityListPanel reg={reg} />
           ) : (
             <CollectionPanel section={section} />
           )}
