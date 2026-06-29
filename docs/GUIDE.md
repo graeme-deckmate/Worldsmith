@@ -32,6 +32,11 @@ being limited to a fixed five. The shapes mirror the source game's data tables.
 - **Stat editors** — elements, forms, runes, statuses, classes, difficulties, gear, rarities,
   charms. Cross-reference fields (e.g. an element's inflicted status) are dropdowns of ids
   that exist in the world.
+- **Wheel editor** — the deeper-combat layer: the element `order`, **reactions** (a trigger
+  element consuming a setup status for an authored effect: hit-amp, instant DoT, or applied
+  status), **surges** (a wyrd-roll table with effects), **twin pairs** (two-element casts +
+  their rider effect), and the mastery/aspect/wheel tuning. Each reaction/surge/twin carries
+  a small **author-defined effect** — so you invent your own Wheel, not just re-skin one.
 - **Enemies / Bosses / Zones** — enemy stats + moves (each with an optional rider), bosses
   with one of five mechanic archetypes (`bars`, `submerge`, `summonAndVeil`, `enrage`,
   `attune`) and editable parameters, and zone encounter formations.
@@ -53,10 +58,23 @@ being limited to a fixed five. The shapes mirror the source game's data tables.
 ## Playtest
 
 Press **▶ playtest** (enabled once there are no errors). Move with arrows / WASD; *bump into*
-NPCs and signs to talk, into bosses to fight. Tall grass triggers encounters from the zone's
-table; gated exits show their barred dialogue until the condition is met. Winning grants XP
-(and levels you up); losing returns you to the start. The battle resolves element weak/resist,
-form and rune power, status DoTs, and enemy moves/riders — all read from your world's data.
+NPCs and signs to talk, into bosses to fight, into a **spring/shrine to rest** (full heal +
+rotate the ascendant **aspect** element). Tall grass triggers encounters from the zone's
+table (the whole formation spawns); gated exits show their barred dialogue until the condition
+is met. Winning grants XP (and levels you up) and **mastery** for each element that landed a
+hit; losing returns you to the start.
+
+The battle is a faithful, deterministic engine over your data: multiple enemies with a target
+selector and shields, element weak/resist, form/rune power, crit, status DoTs, and enemy moves
++ riders — plus the **full Wheel**: chilled→volt **shatter** and the other reactions; **twin**
+casts (a second element, capped matchup, dual procs, and the pair's rider — arc, steam, night,
+rot…); **surges** rolled by the wyrd; per-element **mastery** tiers; a rotating **aspect**
+buff. **Bosses run their mechanic** — enrage, summon-and-veil, submerge, attune, and bars — so
+each plays distinctly. (It uses the game's numbers as defaults but is a fresh engine, not a
+byte-identical copy; spells have no potency slider, so surge gating is simplified.)
+
+The bundled **"The Hollow Reaches"** sample shows it all off: five elements, the full wheel,
+and five bosses (one per mechanic) across gated domains.
 
 > **Scope boundary:** game *data* (numbers, rosters, maps, palettes, unlock rules) is fully
 > editable. Game *mechanics* — the five boss archetypes, form behaviours, rune effects — are

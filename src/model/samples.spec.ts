@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SAMPLES } from './samples.ts';
 import { validateWorld } from './validate.ts';
 import { parseWorld } from './world.ts';
+import { validateMap } from '../editor/map/mapValidate.ts';
 
 describe('sample worlds', () => {
   for (const s of SAMPLES) {
@@ -12,6 +13,12 @@ describe('sample worlds', () => {
     it(`${s.id} round-trips through JSON`, () => {
       const res = parseWorld(JSON.parse(JSON.stringify(s.world)));
       expect(res.ok).toBe(true);
+    });
+    it(`${s.id} maps pass reachability/exit validation`, () => {
+      for (const m of s.world.maps) {
+        const errors = validateMap(m, s.world).filter((i) => i.level === 'error');
+        expect(errors, `${m.id}: ${JSON.stringify(errors)}`).toEqual([]);
+      }
     });
   }
 });

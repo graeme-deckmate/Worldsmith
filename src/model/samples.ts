@@ -1,5 +1,6 @@
 import { zWorld, type World } from './world.ts';
 import { SAMPLE_WORLD } from './sample.ts';
+import { HOLLOW_REACHES } from './reaches.ts';
 
 /**
  * Built-in starter worlds. Emberfell (sample.ts) plus Froststep — a second
@@ -97,6 +98,7 @@ export interface SampleEntry {
 }
 
 export const SAMPLES: SampleEntry[] = [
+  { id: 'hollow_reaches', name: HOLLOW_REACHES.meta.name, description: HOLLOW_REACHES.meta.description, world: HOLLOW_REACHES },
   { id: 'emberfell', name: SAMPLE_WORLD.meta.name, description: SAMPLE_WORLD.meta.description, world: SAMPLE_WORLD },
   { id: 'froststep', name: FROSTSTEP.meta.name, description: FROSTSTEP.meta.description, world: FROSTSTEP },
 ];

@@ -35,6 +35,9 @@ DSL, and the playtest.
 - **E5** — area-unlock rules + dialogue + whole-world problems panel. ✅
 - **E6** — data-driven runtime + Playtest player. ✅
 - **E7** — polish, docs, sample worlds (Emberfell + Froststep), share links. ✅
+- **E8** — deeper Wheel combat: multi-enemy battles + shields, authored reaction/surge/twin
+  effects, mastery + aspect, the 5 boss specials, a Wheel editor, and the rich "Hollow
+  Reaches" sample (5 elements, full wheel, 5 differently-mechaniced bosses). ✅
 
 The content model mirrors the [Sigilbound II](https://github.com/graeme-deckmate/Sigilbound2)
 game's data shapes, with open string ids so any world can be authored from scratch.

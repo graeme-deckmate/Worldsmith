@@ -23,6 +23,16 @@ export const SECTIONS: Section[] = [
   { key: 'runes', label: 'Runes', group: 'Spellcraft', items: (w) => named(w.runes) },
   { key: 'enemyStatuses', label: 'Enemy statuses', group: 'Spellcraft', items: (w) => named(w.enemyStatuses) },
   { key: 'playerStatuses', label: 'Player statuses', group: 'Spellcraft', items: (w) => named(w.playerStatuses) },
+  {
+    key: 'wheel',
+    label: 'Wheel',
+    group: 'Spellcraft',
+    items: (w) => [
+      ...w.wheel.reactions.map((r) => ({ id: r.id, label: `reaction ${r.id}` })),
+      ...w.wheel.surges.map((s) => ({ id: s.id, label: `surge ${s.id}` })),
+      ...w.wheel.twinPairs.map((t) => ({ id: `${t.a}_${t.b}`, label: `twin ${t.prefix}` })),
+    ],
+  },
 
   { key: 'enemies', label: 'Enemies', group: 'Combat', items: (w) => named(w.enemies) },
   { key: 'bosses', label: 'Bosses', group: 'Combat', items: (w) => named(w.bosses) },

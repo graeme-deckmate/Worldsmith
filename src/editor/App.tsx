@@ -11,6 +11,7 @@ import { MapsPanel } from './map/MapsPanel.tsx';
 import { DialoguePanel } from './rules/DialoguePanel.tsx';
 import { UnlocksPanel } from './rules/UnlocksPanel.tsx';
 import { ProblemsPanel } from './rules/ProblemsPanel.tsx';
+import { WheelPanel } from './wheel/WheelPanel.tsx';
 import { EntityListPanel } from './form/EntityListPanel.tsx';
 import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
@@ -24,6 +25,7 @@ const PANELS: Record<string, FC> = {
   maps: MapsPanel,
   dialogue: DialoguePanel,
   unlocks: UnlocksPanel,
+  wheel: WheelPanel,
 };
 
 export function App() {
