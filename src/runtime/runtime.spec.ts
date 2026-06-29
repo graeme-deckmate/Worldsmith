@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SAMPLE_WORLD } from '../model/sample.ts';
 import { indexWorld } from './worldIndex.ts';
 import { evalCondition, type RunState } from './conditions.ts';
-import { castSpell, initBattle, playerMaxHp, playerMaxMp, type BattlePlayer } from './battle.ts';
+import { battleXp, castSpell, initBattle, playerMaxHp, playerMaxMp, setTarget, type BattlePlayer } from './battle.ts';
 import { mulberry32 } from './rng.ts';
 
 const runState = (over: Partial<RunState> = {}): RunState => ({
@@ -39,12 +39,25 @@ describe('battle engine', () => {
   it('is deterministic for a fixed seed and resolves', () => {
     const run = (): string => {
       const rng = mulberry32(42);
-      let st = initBattle(idx, slime!, 3, fresh());
+      let st = initBattle(idx, [{ def: slime!, lv: 3 }], fresh());
       let guard = 0;
       while (!st.over && guard++ < 50) st = castSpell(idx, st, { element: 'rime', form: 'bolt', rune: 'none' }, rng);
-      return `${st.over ?? 'none'}:${String(st.enemy.hp)}:${String(st.player.hp)}`;
+      return `${st.over ?? 'none'}:${String(st.enemies[0]?.hp)}:${String(st.player.hp)}`;
     };
     expect(run()).toBe(run()); // same seed -> same outcome
     expect(run().startsWith('win')).toBe(true); // rime is super-effective vs the slime
+  });
+
+  it('handles multiple enemies and target switching', () => {
+    const rng = mulberry32(7);
+    let st = initBattle(idx, [{ def: slime!, lv: 2 }, { def: slime!, lv: 2 }], fresh());
+    expect(st.enemies).toHaveLength(2);
+    expect(battleXp(st)).toBe(st.enemies[0]!.xp + st.enemies[1]!.xp);
+    st = setTarget(st, 1);
+    expect(st.target).toBe(1);
+    let guard = 0;
+    while (!st.over && guard++ < 80) st = castSpell(idx, st, { element: 'rime', form: 'bolt', rune: 'fury' }, rng);
+    expect(st.over).toBe('win'); // both must fall
+    expect(st.enemies.every((e) => e.hp <= 0)).toBe(true);
   });
 });

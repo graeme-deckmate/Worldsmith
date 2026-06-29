@@ -22,6 +22,7 @@ export function BattleView({
   onCast,
   onDefend,
   onDone,
+  onTarget,
 }: {
   state: BattleState;
   elements: Opt[];
@@ -32,22 +33,40 @@ export function BattleView({
   onCast: () => void;
   onDefend: () => void;
   onDone: () => void;
+  onTarget: (i: number) => void;
 }) {
   const sel = 'rounded bg-zinc-800 px-2 py-1.5 text-sm outline-none focus:ring-1 ring-violet-500';
-  const enemyStatuses = Object.keys(state.enemy.statuses);
   const playerStatuses = Object.keys(state.player.statuses);
 
   return (
     <div className="absolute inset-0 bg-zinc-950/95 grid place-items-center z-20">
       <div className="w-[640px] max-w-[92vw] rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        {/* enemy */}
-        <div className="flex items-center justify-between mb-1">
-          <div className="font-semibold text-rose-300">
-            {state.enemy.name} <span className="text-zinc-500 text-xs">Lv {state.enemy.lv}{state.enemy.isBoss ? ' · BOSS' : ''}</span>
-          </div>
-          <Bar value={state.enemy.hp} max={state.enemy.maxhp} color="#ff5d5d" />
+        {/* enemies */}
+        <div className="space-y-1.5 mb-3">
+          {state.enemies.map((e, i) => {
+            const dead = e.hp <= 0;
+            const focused = i === state.target && !dead;
+            const statuses = Object.keys(e.statuses);
+            return (
+              <button
+                key={i}
+                disabled={dead}
+                onClick={() => onTarget(i)}
+                className={`w-full flex items-center justify-between gap-3 px-2 py-1 rounded ${
+                  focused ? 'bg-rose-900/30 ring-1 ring-rose-500/60' : 'hover:bg-zinc-800'
+                } ${dead ? 'opacity-40' : ''}`}
+              >
+                <div className="text-left">
+                  <span className={`font-semibold ${dead ? 'line-through text-zinc-500' : 'text-rose-300'}`}>{e.name}</span>
+                  <span className="text-zinc-500 text-xs ml-2">Lv {e.lv}{e.isBoss ? ' · BOSS' : ''}</span>
+                  {statuses.length > 0 && <span className="text-[11px] text-amber-400 ml-2">{statuses.join(', ')}</span>}
+                  {e.shield > 0 && <span className="text-[11px] text-sky-300 ml-2">⛨ {e.shield}</span>}
+                </div>
+                <Bar value={e.hp} max={e.maxhp} color="#ff5d5d" />
+              </button>
+            );
+          })}
         </div>
-        {enemyStatuses.length > 0 && <div className="text-[11px] text-amber-400 mb-3">{enemyStatuses.join(', ')}</div>}
 
         {/* player */}
         <div className="flex items-center justify-between mt-3">

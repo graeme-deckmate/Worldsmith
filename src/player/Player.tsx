@@ -5,8 +5,8 @@ import { evalCondition, type RunState } from '../runtime/conditions.ts';
 import { mulberry32, chance, pickWeighted } from '../runtime/rng.ts';
 import { availableIds } from '../runtime/unlocks.ts';
 import {
-  castSpell, defend, initBattle, initBossBattle, playerMaxHp, playerMaxMp, zoneLevel,
-  type BattleState, type Spell,
+  battleXp, castSpell, defeatedBossIds, defend, initBattle, initBossBattle, playerMaxHp,
+  playerMaxMp, setTarget, zoneLevel, type BattleState, type Spell,
 } from '../runtime/battle.ts';
 import { entityAt, exitAt, gateForMap, inBounds, isSolidTile, tileAt, zoneAt } from '../runtime/overworld.ts';
 import { OverworldView } from './OverworldView.tsx';
@@ -31,7 +31,6 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
   const [visited, setVisited] = useState<Set<string>>(new Set([startMap?.id ?? '']));
 
   const [battle, setBattle] = useState<BattleState | null>(null);
-  const pendingBoss = useRef<string | null>(null);
   const [dialogue, setDialogue] = useState<{ speaker: string; pages: string[]; page: number } | null>(null);
   const [toast, setToast] = useState('');
   const [spell, setSpell] = useState<Spell>({ element: '', form: '', rune: '' });
@@ -65,15 +64,9 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
   const flash = (m: string): void => { setToast(m); window.setTimeout(() => setToast(''), 1800); };
   const fighter = () => ({ hp, maxhp, mp, maxmp, level, statuses: {} });
 
-  const startEnemyBattle = (enemyId: string, lv: number): void => {
-    const e = idx.enemies.get(enemyId);
-    if (!e) return;
-    setBattle(initBattle(idx, e, lv, fighter()));
-  };
   const startBoss = (bossId: string): void => {
     const b = idx.bosses.get(bossId);
     if (!b) { flash('(boss not defined)'); return; }
-    pendingBoss.current = bossId;
     setBattle(initBossBattle(idx, b, fighter()));
   };
 
@@ -85,8 +78,13 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
     const rate = world.tuning.progression?.['ENCOUNTER_RATE'] ?? 0.25;
     if (!chance(rng.current, rate)) return;
     const f = pickWeighted(rng.current, zone.formations.map((fm) => ({ item: fm, weight: fm.weight })));
-    const species = f?.members[0];
-    if (species) startEnemyBattle(species, zoneLevel(rng.current, zone.levelMin, zone.levelMax));
+    if (!f) return;
+    const lv = zoneLevel(rng.current, zone.levelMin, zone.levelMax);
+    const spawns = f.members
+      .map((id) => idx.enemies.get(id))
+      .filter((e): e is NonNullable<typeof e> => e !== undefined)
+      .map((def) => ({ def, lv }));
+    if (spawns.length > 0) setBattle(initBattle(idx, spawns, fighter()));
   };
 
   const takeExit = (to: string, tx: number, ty: number): void => {
@@ -156,13 +154,14 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
     setHp(b.player.hp);
     setMp(b.player.mp);
     if (b.over === 'win') {
-      let nxp = xp + b.enemy.xp;
+      let nxp = xp + battleXp(b);
       let lv = level;
       let need = lv * 20;
       while (nxp >= need) { nxp -= need; lv += 1; need = lv * 20; }
       if (lv !== level) { setLevel(lv); setHp(playerMaxHp(idx, lv)); setMp(playerMaxMp(idx, lv)); flash(`Level up! Lv ${String(lv)}`); }
       setXp(nxp);
-      if (pendingBoss.current) setBosses((s) => new Set(s).add(pendingBoss.current as string));
+      const fallen = defeatedBossIds(b);
+      if (fallen.length > 0) setBosses((s) => { const n = new Set(s); fallen.forEach((id) => n.add(id)); return n; });
     } else if (b.over === 'lose' && startMap) {
       setMapId(startMap.id);
       setPos({ x: startMap.spawn.x, y: startMap.spawn.y });
@@ -170,7 +169,6 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
       setMp(playerMaxMp(idx, level));
       flash('You wake back at the start, a little wiser.');
     }
-    pendingBoss.current = null;
     setBattle(null);
   };
 
@@ -220,6 +218,7 @@ export function Player({ world, onClose }: { world: World; onClose: () => void }
             onCast={() => setBattle((b) => (b ? castSpell(idx, b, spell, rng.current) : b))}
             onDefend={() => setBattle((b) => (b ? defend(idx, b, rng.current) : b))}
             onDone={finishBattle}
+            onTarget={(i) => setBattle((b) => (b ? setTarget(b, i) : b))}
           />
         )}
       </div>
