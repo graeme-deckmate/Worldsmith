@@ -13,7 +13,7 @@ function download(world: World, text: string): void {
 }
 
 /** Editor top bar: world name, undo/redo, import/export, validation summary. */
-export function TopBar({ onClose }: { onClose: () => void }) {
+export function TopBar({ onClose, onPlaytest }: { onClose: () => void; onPlaytest: () => void }) {
   const { world, issues, exportJson, importJson, undo, redo, past, future } = useWorld();
   const fileRef = useRef<HTMLInputElement>(null);
   if (!world) return null;
@@ -57,6 +57,14 @@ export function TopBar({ onClose }: { onClose: () => void }) {
           onClick={() => fileRef.current?.click()}
         >
           import
+        </button>
+        <button
+          className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 font-medium"
+          onClick={onPlaytest}
+          disabled={errors > 0}
+          title={errors > 0 ? 'Fix errors before playtesting' : 'Playtest this world'}
+        >
+          ▶ playtest
         </button>
         <button
           className="px-3 py-1 rounded bg-violet-600 hover:bg-violet-500 font-medium"

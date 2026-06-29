@@ -14,6 +14,7 @@ import { ProblemsPanel } from './rules/ProblemsPanel.tsx';
 import { EntityListPanel } from './form/EntityListPanel.tsx';
 import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
+import { Player } from '../player/Player.tsx';
 
 /** Sections with a bespoke editor; stat sections use the generic EntityListPanel. */
 const PANELS: Record<string, FC> = {
@@ -28,6 +29,7 @@ export function App() {
   const world = useWorld((s) => s.world);
   const refreshList = useWorld((s) => s.refreshList);
   const [active, setActive] = useState('overview');
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     void refreshList();
@@ -41,7 +43,8 @@ export function App() {
 
   return (
     <div className="h-full flex flex-col">
-      <TopBar onClose={() => useWorld.setState({ world: null })} />
+      <TopBar onClose={() => useWorld.setState({ world: null })} onPlaytest={() => setPlaying(true)} />
+      {playing && <Player world={world} onClose={() => setPlaying(false)} />}
       <div className="flex-1 flex min-h-0">
         <Sidebar active={active} onSelect={setActive} />
         <main className="flex-1 overflow-auto p-6 min-w-0">
