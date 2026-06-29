@@ -7,6 +7,7 @@ import { OverviewPanel } from './panels/OverviewPanel.tsx';
 import { CollectionPanel } from './panels/CollectionPanel.tsx';
 import { SpritesPanel } from './panels/SpritesPanel.tsx';
 import { PalettesPanel } from './panels/PalettesPanel.tsx';
+import { MapsPanel } from './map/MapsPanel.tsx';
 import { EntityListPanel } from './form/EntityListPanel.tsx';
 import { ENTITY_REGS } from './form/specs.ts';
 import { SECTIONS } from './nav.ts';
@@ -15,6 +16,7 @@ import { SECTIONS } from './nav.ts';
 const PANELS: Record<string, FC> = {
   sprites: SpritesPanel,
   palettes: PalettesPanel,
+  maps: MapsPanel,
 };
 
 export function App() {
