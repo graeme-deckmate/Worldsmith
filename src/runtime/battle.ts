@@ -1,4 +1,4 @@
-import type { Boss, Enemy } from '../model/index.ts';
+import type { Boss, Enemy, Reaction, Surge } from '../model/index.ts';
 import type { Rng } from './rng.ts';
 import { chance, pickWeighted, randInt } from './rng.ts';
 import type { WorldIndex } from './worldIndex.ts';
@@ -138,6 +138,109 @@ export function spellCost(idx: WorldIndex, spell: Spell): number {
   return Math.max(1, Math.ceil((form?.mp ?? 1) * (rune?.mp ?? 1) * TUNING(idx, 'combat', 'costBase', 3)));
 }
 
+function basePower(idx: WorldIndex, level: number): number {
+  return TUNING(idx, 'combat', 'basePower', 8) + level * TUNING(idx, 'combat', 'levelScaling', 2);
+}
+
+/** Product of a target's status `takenMult` (withered/shocked amplify incoming dmg). */
+function enemyTakenMult(idx: WorldIndex, enemy: BattleEnemy): number {
+  let m = 1;
+  for (const sid of Object.keys(enemy.statuses)) {
+    const def = idx.enemyStatuses.get(sid);
+    if (def?.takenMult !== undefined) m *= def.takenMult;
+  }
+  return m;
+}
+
+/** Product of the player's status `spellPowerMult` (e.g. chilled weakens casts). */
+function playerPowerMult(idx: WorldIndex, player: BattlePlayer): number {
+  let m = 1;
+  for (const sid of Object.keys(player.statuses)) {
+    const def = idx.world.playerStatuses.find((p) => p.id === sid);
+    if (def?.spellPowerMult !== undefined) m *= def.spellPowerMult;
+  }
+  return m;
+}
+
+function dotTick(idx: WorldIndex, statusId: string, lv: number): number {
+  const def = idx.enemyStatuses.get(statusId);
+  return def?.dot ? Math.round(def.dot.base + def.dot.perLv * lv) : 0;
+}
+
+/** The reaction (if any) that fires: cast element == trigger AND enemy has setup. */
+function reactionFor(idx: WorldIndex, element: string, enemy: BattleEnemy): Reaction | null {
+  for (const r of idx.world.wheel.reactions)
+    if (r.trigger === element && (enemy.statuses[r.setup] ?? 0) > 0) return r;
+  return null;
+}
+
+/** Apply a reaction's non-hit portions and consume its setup status. */
+function applyReaction(idx: WorldIndex, s: BattleState, target: BattleEnemy, r: Reaction, keepSetup: boolean): void {
+  const setupTurns = target.statuses[r.setup] ?? 0;
+  if (!keepSetup) delete target.statuses[r.setup];
+  const eff = r.effect;
+  if (eff?.instantDot) {
+    const tick = dotTick(idx, eff.instantDot.status, target.lv) || dotTick(idx, r.setup, target.lv) || 1;
+    const turns = eff.instantDot.perRemainingTurn ? Math.max(1, setupTurns) : 1;
+    const d = Math.max(1, Math.round(tick * eff.instantDot.mult * turns));
+    damageEnemy(target, d);
+    s.log.push(`${r.line || 'Reaction!'} (${String(d)})`);
+  } else {
+    s.log.push(r.line || 'Reaction!');
+  }
+  if (eff?.applyStatus) {
+    const st = idx.enemyStatuses.get(eff.applyStatus.status);
+    if (st && target.hp > 0) {
+      target.statuses[st.id] = eff.applyStatus.turns;
+      s.log.push(`${target.name} is ${st.label}!`);
+    }
+  }
+}
+
+/** Roll a wyrd surge (rune `surges` or a tuned chance; never if `alwaysStable`). */
+function maybeSurge(idx: WorldIndex, s: BattleState, spell: Spell, rng: Rng): void {
+  const rune = idx.runes.get(spell.rune);
+  if (rune?.alwaysStable) return;
+  const gate = rune?.surges === true || chance(rng, WTUNE(idx, 'surgeChance', 0));
+  if (!gate) return;
+  const face = randInt(rng, 1, 10);
+  const surge = idx.world.wheel.surges.find((su) => su.roll === face);
+  if (surge) applySurge(idx, s, spell, surge, rng);
+}
+
+function applySurge(idx: WorldIndex, s: BattleState, spell: Spell, surge: Surge, rng: Rng): void {
+  s.log.push(surge.line || 'The wyrd stirs.');
+  const e = surge.effect;
+  if (!e) return;
+  const alive = s.enemies.filter((en) => en.hp > 0);
+  const first = alive[0];
+  const element = idx.elements.get(spell.element);
+  if (e.damage && first) { damageEnemy(first, Math.max(1, Math.round(e.damage))); s.log.push(`The cast bites ${first.name} for ${String(Math.round(e.damage))}.`); }
+  if (e.healHp) s.player.hp = Math.min(s.player.maxhp, s.player.hp + Math.round(e.healHp));
+  if (e.restoreMp) s.player.mp = Math.min(s.player.maxmp, s.player.mp + Math.round(e.restoreMp));
+  if (e.forceElementStatus && first && element) {
+    const st = idx.enemyStatuses.get(element.status);
+    if (st) { first.statuses[st.id] = st.duration; s.log.push(`${first.name} is ${st.label}!`); }
+  }
+  if (e.randomEnemyStatus && alive.length > 0) {
+    const pick = alive[randInt(rng, 0, alive.length - 1)];
+    const st = idx.enemyStatuses.get(e.randomEnemyStatus.status);
+    if (pick && st) { pick.statuses[st.id] = e.randomEnemyStatus.turns; s.log.push(`${pick.name} is ${st.label}!`); }
+  }
+  if (e.recastFrac && first) {
+    const form = idx.forms.get(spell.form);
+    const rune = idx.runes.get(spell.rune);
+    const d = Math.max(1, Math.round(basePower(idx, s.player.level) * (form?.pw ?? 1) * (rune?.pw ?? 1) * elementMult(idx, spell.element, first) * e.recastFrac * (0.9 + rng() * 0.2)));
+    damageEnemy(first, d);
+    s.log.push(`The echo echoes for ${String(d)}.`);
+  }
+  if (e.selfElementStatus && element && idx.world.playerStatuses.some((p) => p.id === element.status)) {
+    s.player.statuses[element.status] = 3;
+  }
+  if (e.selfHpFracFee) s.player.hp = Math.max(1, s.player.hp - Math.round(s.player.maxhp * e.selfHpFracFee));
+  if (e.mpDrain) s.player.mp = Math.max(0, s.player.mp - e.mpDrain);
+}
+
 /** Player casts a spell at the focused enemy, then enemies act and statuses tick. */
 export function castSpell(idx: WorldIndex, state: BattleState, spell: Spell, rng: Rng): BattleState {
   if (state.over) return state;
@@ -156,19 +259,34 @@ export function castSpell(idx: WorldIndex, state: BattleState, spell: Spell, rng
     s.player.mp = Math.min(s.player.maxmp, s.player.mp + Math.ceil(s.player.maxmp * 0.35));
   } else {
     s.player.mp -= cost;
-    const base = TUNING(idx, 'combat', 'basePower', 8) + s.player.level * TUNING(idx, 'combat', 'levelScaling', 2);
-    const mult = (form?.pw ?? 1) * (rune?.pw ?? 1) * elementMult(idx, spell.element, target);
-    const variance = 0.9 + rng() * 0.2;
-    const dmg = Math.max(1, Math.round(base * mult * variance));
-    damageEnemy(target, dmg);
-    s.log.push(`You cast ${element?.label ?? spell.element} ${form?.label ?? spell.form} at ${target.name} for ${String(dmg)}.`);
-    if (element && chance(rng, element.proc + (rune?.procBonus ?? 0))) {
+    // pipeline: base → element matchup → player power → variance → crit →
+    // reaction hit-amp → enemy taken-mult → round → shield/apply.
+    let dmg = basePower(idx, s.player.level) * (form?.pw ?? 1) * (rune?.pw ?? 1);
+    dmg *= elementMult(idx, spell.element, target);
+    dmg *= playerPowerMult(idx, s.player);
+    dmg *= 0.9 + rng() * 0.2;
+    const critChance = rune?.crit?.chance ?? TUNING(idx, 'combat', 'critChance', 0.08);
+    const critMult = rune?.crit?.mult ?? TUNING(idx, 'combat', 'critMult', 1.5);
+    const crit = chance(rng, critChance);
+    if (crit) dmg *= critMult;
+    const reaction = reactionFor(idx, spell.element, target);
+    if (reaction?.effect?.hitBonus) dmg *= 1 + reaction.effect.hitBonus;
+    dmg *= enemyTakenMult(idx, target);
+    const final = Math.max(1, Math.round(dmg));
+    damageEnemy(target, final);
+    s.log.push(`You cast ${element?.label ?? spell.element} ${form?.label ?? spell.form} at ${target.name} for ${String(final)}${crit ? ' (crit!)' : ''}.`);
+    // reaction non-hit portion + setup consumption
+    if (reaction) applyReaction(idx, s, target, reaction, rune?.keepsReactionSetup === true);
+    // status proc
+    if (element && target.hp > 0 && chance(rng, element.proc + (rune?.procBonus ?? 0))) {
       const st = idx.enemyStatuses.get(element.status);
       if (st) {
         target.statuses[st.id] = st.duration;
         s.log.push(`${target.name} is ${st.label}!`);
       }
     }
+    // surge roll (never into a won battle)
+    if (aliveIndices(s).length > 0) maybeSurge(idx, s, spell, rng);
   }
 
   if (aliveIndices(s).length === 0) return finish(idx, s, 'win');

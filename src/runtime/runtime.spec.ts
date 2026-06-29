@@ -60,4 +60,37 @@ describe('battle engine', () => {
     expect(st.over).toBe('win'); // both must fall
     expect(st.enemies.every((e) => e.hp <= 0)).toBe(true);
   });
+
+  it('fires an authored reaction: consumes setup, applies effect', () => {
+    const reactWorld = {
+      ...SAMPLE_WORLD,
+      wheel: {
+        ...SAMPLE_WORLD.wheel,
+        reactions: [{ id: 'melt', setup: 'chilled', trigger: 'ember', line: 'MELT', effect: { hitBonus: 0.5, applyStatus: { status: 'burning', turns: 3 } } }],
+      },
+    };
+    const ridx = indexWorld(reactWorld);
+    let st = initBattle(ridx, [{ def: slime!, lv: 3 }], fresh());
+    st.enemies[0]!.statuses['chilled'] = 2;
+    st = castSpell(ridx, st, { element: 'ember', form: 'bolt', rune: 'none' }, mulberry32(3));
+    expect(st.enemies[0]!.statuses['chilled']).toBeUndefined(); // consumed
+    expect('burning' in st.enemies[0]!.statuses).toBe(true); // applied
+    expect(st.log.some((l) => l.includes('MELT'))).toBe(true);
+  });
+
+  it('rolls a wyrd surge when the rune always surges', () => {
+    const surgeWorld = {
+      ...SAMPLE_WORLD,
+      runes: [...SAMPLE_WORLD.runes, { id: 'wyrd', label: 'Wyrd', blurb: '', mp: 1, suffix: '', surges: true }],
+      wheel: {
+        ...SAMPLE_WORLD.wheel,
+        surges: Array.from({ length: 10 }, (_, i) => ({ roll: i + 1, severity: 'mild' as const, id: 'bite', line: 'BITE', effect: { damage: 3 } })),
+      },
+    };
+    const sidx = indexWorld(surgeWorld);
+    let st = initBattle(sidx, [{ def: slime!, lv: 8 }], fresh());
+    // ember is resisted by the slime, so it survives the hit and the surge rolls.
+    st = castSpell(sidx, st, { element: 'ember', form: 'bolt', rune: 'wyrd' }, mulberry32(2));
+    expect(st.log.some((l) => l.includes('BITE'))).toBe(true);
+  });
 });
