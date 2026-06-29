@@ -1,4 +1,5 @@
 import type { EntityReg } from './EntityListPanel.tsx';
+import { COMBAT_REGS } from './combatRegs.tsx';
 
 /**
  * Declarative field specs + factories for the "stat" content collections (E2).
@@ -165,5 +166,5 @@ const REGS: EntityReg[] = [
 ];
 
 export const ENTITY_REGS: Record<string, EntityReg> = Object.fromEntries(
-  REGS.map((r) => [r.key as string, r]),
+  [...REGS, ...COMBAT_REGS].map((r) => [r.key as string, r]),
 );

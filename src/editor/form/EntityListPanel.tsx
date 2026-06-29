@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useWorld } from '../../store/worldStore.ts';
 import type { World } from '../../model/index.ts';
 import { idAvailable, removeById, upsert } from '../collections.ts';
@@ -13,6 +13,8 @@ export interface EntityReg {
   spec: readonly Field[];
   factory: (id: string, world: World) => Def;
   idPrefix: string;
+  /** optional bespoke sub-editor rendered below the form (moves, boss special…). */
+  extra?: (def: Def, patch: (p: Record<string, unknown>) => void) => ReactNode;
 }
 
 function mergePatch(def: Def, patch: Record<string, unknown>): Def {
@@ -114,6 +116,7 @@ export function EntityListPanel({ reg }: { reg: EntityReg }) {
               </button>
             </div>
             <EntityForm def={selected} spec={reg.spec} onPatch={patch} />
+            {reg.extra && <div className="mt-5">{reg.extra(selected, patch)}</div>}
           </>
         ) : (
           <div className="text-sm text-zinc-500 grid place-items-center h-full">
