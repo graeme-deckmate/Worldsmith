@@ -16,6 +16,18 @@ export const zId = z
   .regex(/^[a-z][a-z0-9_.]*$/, 'ids are lowercase, start with a letter, and use a-z 0-9 _ .');
 export type Id = z.infer<typeof zId>;
 
+/** Coerce any string into a valid id slug (lowercase, letter-led, a-z 0-9 _ .). */
+export function slugifyId(s: string): string {
+  let out = s
+    .toLowerCase()
+    .replace(/[^a-z0-9_.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[._]+|[._]+$/g, '');
+  if (!out) out = 'world';
+  if (!/^[a-z]/.test(out)) out = `w_${out}`;
+  return out.slice(0, 48);
+}
+
 /** `#rgb` or `#rrggbb` hex colour. */
 export const zHexColor = z
   .string()

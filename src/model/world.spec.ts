@@ -1,7 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { emptyWorld, parseWorld, migrate, SCHEMA_VERSION } from './world.ts';
 import { validateWorld } from './validate.ts';
+import { slugifyId } from './primitives.ts';
 import { SAMPLE_WORLD } from './sample.ts';
+
+describe('slugifyId', () => {
+  it('coerces arbitrary input into a valid id', () => {
+    expect(slugifyId('GW1')).toBe('gw1');
+    expect(slugifyId('Grae 1')).toBe('grae_1');
+    expect(slugifyId('123')).toBe('w_123'); // must start with a letter
+    expect(slugifyId('  ')).toBe('world');
+    expect(slugifyId('My World!!')).toBe('my_world');
+  });
+  it('a slugified bad id builds a parseable world (no throw)', () => {
+    const w = emptyWorld(slugifyId('GW1'), 'Grae 1');
+    expect(parseWorld(JSON.parse(JSON.stringify(w))).ok).toBe(true);
+  });
+});
 
 describe('World model', () => {
   it('builds a valid empty world', () => {

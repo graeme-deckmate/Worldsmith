@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   emptyWorld,
   parseWorld,
+  slugifyId,
   validateWorld,
   type Issue,
   type World,
@@ -64,7 +65,8 @@ export const useWorld = create<WorldState>((setState, getState) => ({
   },
 
   newWorld: async (id, name) => {
-    const w = commit(emptyWorld(id, name, now()));
+    const safeId = slugifyId(id || name || 'world');
+    const w = commit(emptyWorld(safeId, name.trim() || safeId, now()));
     setState({ world: w, issues: validateWorld(w), past: [], future: [] });
     await getState().refreshList();
   },

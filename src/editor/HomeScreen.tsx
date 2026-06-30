@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorld } from '../store/worldStore.ts';
 import { SAMPLES } from '../model/samples.ts';
+import { slugifyId } from '../model/index.ts';
 
 /** Landing screen: create, open, import, or load a sample world. */
 export function HomeScreen() {
@@ -9,6 +10,7 @@ export function HomeScreen() {
   const [name, setName] = useState('My World');
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const finalId = slugifyId(id.trim() || name.trim() || 'world');
 
   useEffect(() => {
     void refreshList();
@@ -41,7 +43,9 @@ export function HomeScreen() {
                 className="block mt-1 w-40 rounded bg-zinc-800 px-2 py-1.5 text-sm outline-none focus:ring-1 ring-violet-500"
                 value={id}
                 onChange={(e) => setId(e.target.value)}
+                placeholder="my_world"
               />
+              {finalId !== id.trim() && <span className="block mt-0.5 text-[10px] text-amber-400">saved as: {finalId}</span>}
             </label>
             <label className="text-xs text-zinc-400">
               name
