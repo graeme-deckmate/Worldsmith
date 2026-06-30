@@ -74,7 +74,10 @@ each plays distinctly. (It uses the game's numbers as defaults but is a fresh en
 byte-identical copy; spells have no potency slider, so surge gating is simplified.)
 
 The bundled **"The Hollow Reaches"** sample shows it all off: five elements, the full wheel,
-and five bosses (one per mechanic) across gated domains.
+and five bosses (one per mechanic) across gated domains. The **"The Sundered Reaches (v2
+game)"** sample is the *entire Sigilbound II game* — 14 maps, 13 bosses, the full wheel —
+converted to an editable World (regenerate it with `scripts/to-worldsmith.ts` in the game repo),
+so you can open the real game, tweak any value, and playtest it here.
 
 > **Scope boundary:** game *data* (numbers, rosters, maps, palettes, unlock rules) is fully
 > editable. Game *mechanics* — the five boss archetypes, form behaviours, rune effects — are
