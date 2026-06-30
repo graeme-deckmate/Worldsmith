@@ -39,23 +39,28 @@ export function PaletteManager({
         </button>
         {entries.map(([ch, color]) => (
           <div key={ch} className="relative group">
+            {/* click the swatch to PAINT with this colour */}
             <button
-              className={sel(ch)}
+              className={`${sel(ch)} grid place-items-center`}
               style={{ background: color }}
-              title={`'${ch}' ${color}`}
+              title={`'${ch}' ${color} — click to paint (or press ${ch})`}
               onClick={() => onSelect(ch)}
             >
-              <span className="absolute bottom-0 right-0 text-[9px] px-0.5 bg-black/50 rounded-tl text-white/80">
-                {ch}
-              </span>
+              <span className="text-[11px] font-bold text-white mix-blend-difference select-none">{ch}</span>
             </button>
-            <input
-              type="color"
-              value={normalizeHex(color)}
-              onChange={(e) => onSetColor(ch, e.target.value)}
-              className="absolute inset-0 opacity-0 w-9 h-9 cursor-pointer"
+            {/* small corner control to RECOLOUR (opens the picker) */}
+            <label
+              className="absolute -bottom-1.5 -left-1.5 w-4 h-4 rounded-full bg-zinc-900 border border-zinc-600 grid place-items-center cursor-pointer text-[8px] text-zinc-300 hover:text-violet-300"
               title={`recolour '${ch}'`}
-            />
+            >
+              ✎
+              <input
+                type="color"
+                value={normalizeHex(color)}
+                onChange={(e) => onSetColor(ch, e.target.value)}
+                className="sr-only"
+              />
+            </label>
             <button
               className="absolute -top-1.5 -right-1.5 hidden group-hover:grid place-items-center w-4 h-4 rounded-full bg-zinc-900 border border-zinc-600 text-[10px] text-zinc-400 hover:text-rose-400"
               onClick={() => onRemoveChar(ch)}

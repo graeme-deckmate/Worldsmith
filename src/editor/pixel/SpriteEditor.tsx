@@ -27,6 +27,20 @@ export function SpriteEditor({
     setPal({ ...sprite.pal });
   }, [sprite]);
 
+  // Keyboard: press a palette char to select it (or `.` / Backspace to erase).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement | null)?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '.' || e.key === 'Backspace') { setPaintChar('.'); e.preventDefault(); return; }
+      if (e.key.length === 1 && e.key in pal) { setPaintChar(e.key); e.preventDefault(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pal]);
+
   const commit = (nextGrid: string[], nextPal: Palette): void => {
     onCommit({ ...sprite, grid: nextGrid, pal: nextPal });
   };
@@ -124,9 +138,10 @@ export function SpriteEditor({
           onRemoveChar={removeChar}
         />
         <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
-          Click or drag on the grid to paint with the selected colour. Pick the ⌫ swatch to erase
-          (transparent). Recolour by clicking a swatch's colour dot; the change applies live to
-          every cell using it.
+          Click a swatch (or press its letter key) to pick the paint colour, then click or drag on
+          the grid. Press <kbd className="px-1 bg-zinc-800 rounded">.</kbd> or Backspace, or pick
+          the ⌫ swatch, to erase (transparent). Recolour with a swatch's small ✎ dot; the change
+          applies live to every cell using that letter.
         </p>
       </div>
     </div>
